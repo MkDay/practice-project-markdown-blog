@@ -1,0 +1,183 @@
+## page routes:
+    * /articles
+    * /articles/new
+    * /article/show
+    * /article/edit
+    * article/delete
+
+## packages that used
+        - slugify
+        - marked
+        - jsdom
+        - dompurify
+        - method-override
+
+    * we use mongoose 'pre()' method here to,
+        - create a slug using the title instead of the id.
+        - convert markdown to HTML.  
+
+
+    articleSchema.pre('validate', function(next) {
+    
+    // create unique slug using title
+    if(this.title) {
+        this.slug = slugify(this.title, {
+            lower: true,
+            strict: true
+        });     
+    }
+
+    // convert markdown to HTML
+    if(this.markdown) {
+        this.sanitizedHTML = dompurify.sanitize(marked(this.markdown));
+    }
+
+    next();
+});
+
+    * method-override is used to override methods.
+    * actually I can't understand very well, but I think <a> tags for only GET request & <form> tags only for GET & POST request.
+    * so handle the other methods on those tags we need this package.
+    * that's only my vision of the context. I should find out it clearly later on.
+    * we use it at 'app.js' below the urlencoded middleware.
+        app.use(methodOverride('_method'));
+    * then here we use it in two different places.
+
+        ---------------- index.ejs -----------------
+        <form class="d-inline" action="/articles/<%= article.id %>?_method=DELETE" method="POST">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+        ------------------ edit.ejs ------------------------
+         <form action="/articles/<%= article.slug %>/?_method=PUT" method="POST">
+            <%- include('_form_field.ejs') %>
+        </form>
+
+## POST & PUT requests
+
+    * POST & PUT request almost identical so we create separate function and reuse for the both handles.
+    * they ony change from 'path' and 'req.article'.
+
+
+        function saveArticleAndRedirect(path) {
+            return async (req, res) => {
+             let article = req.article;
+                article.title = req.body.title;
+                article.description = req.body.description;
+                article.markdown = req.body.markdown;  
+    
+            try {
+            
+                article = await article.save();
+                res.redirect(`/articles/${ article.slug }`);
+    
+            } catch(err) {
+                console.log(err);
+                res.render(`articles-views/${path}`, { article: article })
+            }
+        
+            }
+        }
+
+router.post('/', async (req, res, next) => {
+    req.article = new Article();
+    next();
+}, saveArticleAndRedirect('new'));
+
+
+router.put('/:slug', async (req, res, next) => {
+    req.article = await Article.findOne({ slug: req.params.slug });
+    next();
+}, saveArticleAndRedirect('edit'));
+
+# /articles:
+    * find all the articles from database and sort it in descending order.
+
+# /articles/new
+    * created view called 'new.ejs'
+    * just render the view like below.
+        res.render('articles-views/new', { article: new Article() });
+    * in the 'new.ejs' has a form it includes '_form_field.ejs' partial view.
+    * it redirects after submitting to '/articles'
+    * the form has the input fields for,
+        - title
+        - description
+        - markdown
+    * it has cancel button that link to home page.
+    * and save button to submit the form.
+    * form field pre-filled with existing data if there any.
+    * the reason we create a partial view for creating new article, we can use it for the article editing task too.
+
+# /article/show
+    * the page is there for showcasing the single article.
+
+        <h1 class="mb-1"><%= article.title %></h1>
+        <div class="text-muted mb-2"><%= article.createdAt.toLocaleDateString() %></div>
+        <a href="/" class="btn btn-secondary">All Articles</a>
+        <a href="/articles/edit/<%= article.slug %>" class="btn btn-info">Edit</a>
+        <div><%- article.sanitizedHTML %></div>
+
+    * we show at there, article's,
+        - title
+        - created date 
+        - the button to all article page
+        - edit button
+        - and converted markdown into HTML 
+
+    * <%- article.sanitizedHTML %> here we use '<%-' why because it convert raw HTML to viewable content.
+    * in each article card in the all article page has 'Read More' button and it takes us to show the single article.
+
+# /article/edit
+
+<!-- 
+ <h1 class="mb-4">Edit Article</h1>
+        <form action="/articles/<%= article.slug %>/?_method=PUT" method="POST">
+            <%- include('_form_field.ejs') %>
+        </form>
+
+-->
+
+router.get('/edit/:slug', async (req, res) => {
+    
+    const article = await Article.findOne({ slug: req.params.slug });
+    
+    res.render('articles-views/edit', { article: article });
+});
+
+    * here I use 'slug' instead of 'id' because I can't get the edit page using 'id'.
+    * it tells something called mongoose cast error, it is talking about the number of bytes of the id (they give the reason that the id should be 12 bytes).
+    * so I change the 'id' into 'slug' and '.findById()' to '.findOne()' I think it's fine since slug is also unique.
+    * we add edit button at two places,
+        - article show page
+        - in each article card in the all article page 
+
+# article/delete
+    ------------- index.ejs -------------------------
+    <form class="d-inline" action="/articles/<%= article.id %>?_method=DELETE" method="POST">
+        <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+    ---------------------------------------------
+
+    router.delete('/:id', async (req, res) => {
+        await Article.findByIdAndDelete(req.params.id);
+        res.redirect('/');
+    });
+
+    * we add 'delete' button into each article card in the '/article' page.
+
+
+
+    ================================================================================
+
+# how to convert markdown content into html in node js
+
+    * create ejs form to take markdown input 
+    * create mongoose model for storing data into database
+    * we need mardown & sanitizedHTML parts from this db model.
+    * then create article.Schema.pre() function for convert mardown into html
+    * then go to app.js and create routes.
+    
+
+
+
+
+
